@@ -1,0 +1,99 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rails
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "chat-assistance.labels" . | nindent 4 }}
+    app: rails
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: rails
+  template:
+    metadata:
+      labels:
+        app: rails
+        {{- include "chat-assistance.labels" . | nindent 8 }}
+    spec:
+      {{- include "chat-assistance.nodeSelector" . | nindent 6 }}
+      containers:
+        - name: rails
+          image: {{ .Values.images.rails }}
+          ports:
+            - containerPort: 8012
+          env:
+            - name: NVIDIA_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ngc-api-secret
+                  key: api-key
+            - name: HOME
+              value: /tmp
+            - name: HF_HOME
+              value: /tmp/.cache/huggingface
+            - name: HUGGINGFACE_HUB_CACHE
+              value: /tmp/.cache/huggingface/hub
+            - name: TRANSFORMERS_CACHE
+              value: /tmp/.cache/huggingface/hub
+            - name: XDG_CACHE_HOME
+              value: /tmp/.cache
+            - name: FASTEMBED_CACHE_PATH
+              value: /tmp/.cache/fastembed
+          resources:
+            {{- include "chat-assistance.resources.backend" . | nindent 12 }}
+          securityContext:
+            {{- include "chat-assistance.securityContext" . | nindent 12 }}
+          readinessProbe:
+            tcpSocket:
+              port: 8012
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 8012
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          volumeMounts:
+            # NemoGuardrails expects a directory – mount the whole ConfigMap here
+            - name: rails-config
+              mountPath: /app/shared/configs/rails
+              readOnly: true
+            # Patched main.py: adds top-level 'content' key to NemoGuardrails response
+            - name: rails-main-patch
+              mountPath: /app/main.py
+              subPath: main.py
+              readOnly: true
+            # Writable cache for HuggingFace/fastembed model downloads at startup.
+            # Required on OpenShift where the pod runs as a random UID with no
+            # writable $HOME or /.cache directory.
+            - name: hf-cache
+              mountPath: /tmp
+      volumes:
+        - name: rails-config
+          configMap:
+            name: shared-configs
+            items:
+              - key: config.yml
+                path: config.yml
+        - name: rails-main-patch
+          configMap:
+            name: rails-main-patch
+        - name: hf-cache
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rails
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "chat-assistance.labels" . | nindent 4 }}
+spec:
+  ports:
+    - port: 8012
+      targetPort: 8012
+  selector:
+    app: rails

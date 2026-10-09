@@ -1,0 +1,117 @@
+# Default values for fraud-detection.
+# This is a YAML-formatted file.
+global:
+  imageRegistry: kishorek123
+  imagePullPolicy: IfNotPresent
+  # Set to true if running in air-gapped mode.
+  # Note: Ideally keep using kishorek123/fraud-detection even for online to ensure version compatibility.
+  airGapped: true
+  # Images are public on Docker Hub (kishorek123/fraud-detection), so no pull secret is needed.
+  imagePullSecrets: []
+images:
+  backend:
+    repository: fraud-detection
+    tag: backend
+  frontend:
+    repository: fraud-detection
+    tag: frontend-v2
+  customerService:
+    repository: fraud-detection
+    tag: customer_service
+  morpheusPipeline:
+    repository: fraud-detection
+    tag: morpheus_pipeline
+  morpheusPriority:
+    repository: fraud-detection
+    tag: morpheus_priority
+  tritonBase:
+    registry: nvcr.io/nvidia
+    repository: tritonserver
+    tag: 26.03-pyt-python-py3
+  tritonModels:
+    repository: fraud-detection
+    tag: models
+  nimLLM:
+    repository: fraud-detection
+    tag: nim_llm
+  kafka:
+    repository: fraud-detection
+    tag: kafka
+  zookeeper:
+    repository: fraud-detection
+    tag: zookeeper
+  mongodb:
+    repository: fraud-detection
+    tag: mongodb
+
+# Python dependency versions for Triton pip-installer init container.
+# torch MUST be installed from the cu128 index (not PyPI) to support
+# Blackwell GPUs (sm_120). PyPI torch only supports up to sm_90.
+# To override for a different GPU (e.g. L40S with sm_89), you can
+# switch back to PyPI by removing the --index-url in triton.yaml
+# and pinning torch to 2.6.0 here.
+pythonDeps:
+  torchVersion: "2.7.0"
+  torchGeometricVersion: "2.6.0"
+  xgboostVersion: "2.1.4"
+  captumVersion: "0.7.0"
+
+# NGC API Key for NIM LLM (pass via --set ngcApiKey=<your-key>)
+# Leave empty to skip secret creation
+ngcApiKey: ""
+
+# GPU Node Deployment Target
+# Set gpuType to "l40s" or "rtx6000" to deploy the entire stack on that GPU cluster.
+#   l40s    → targets nodes with label: nvidia.com/gpu.product=NVIDIA-L40S (wn1, wn2)
+#   rtx6000 → targets nodes with label: nvidia.com/gpu.product=NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition (c845)
+nodeDeployment:
+  gpuType: l40s
+
+# GPU Configuration
+gpu:
+  enabled: true
+  resourceType: nvidia.com/gpu
+  morpheusCount: 1
+  tritonCount: 1
+  # NIM LLM is huge, check if you have enough GPUs.
+  # If running all on 1 node with 1 GPU, you might need MIG or time-slicing.
+  nimCount: 1
+
+# Persistence
+persistence:
+  mongodb: 10Gi
+  kafka: 5Gi
+
+# Service configuration — ClusterIP for OpenShift (use Routes for external access)
+service:
+  type: ClusterIP
+  frontendPort: 3000
+  backendPort: 8000
+  tritonHttpPort: 8005
+  tritonGrpcPort: 8006
+
+# OpenShift Routes
+routes:
+  frontend:
+    enabled: true
+    # host: fraud-detection.apps.your-cluster.example.com  # Leave empty for auto-generated
+    tls:
+      termination: edge
+      insecureEdgeTerminationPolicy: Redirect
+  backend:
+    enabled: true
+    # host: fraud-detection-api.apps.your-cluster.example.com
+    tls:
+      termination: edge
+      insecureEdgeTerminationPolicy: Redirect
+
+# Pod security context (OpenShift non-root)
+podSecurityContext:
+  runAsNonRoot: true
+
+# Container security context
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL

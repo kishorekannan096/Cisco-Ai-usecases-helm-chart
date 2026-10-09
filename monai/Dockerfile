@@ -1,0 +1,3 @@
+FROM kishorek123/monai:backend
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
